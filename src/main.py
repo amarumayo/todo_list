@@ -1,5 +1,11 @@
 import sys
-from PyQt6.QtCore import QDate, Qt
+from datetime import date
+from PyQt6.QtCore import (
+    QDate, 
+    Qt, 
+    QTimer
+)
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QApplication, 
     QMainWindow, 
@@ -11,7 +17,8 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QTableWidget, 
-    QTableWidgetItem
+    QTableWidgetItem,
+    QMessageBox
 )
 from data.expense_repository import ExpenseRepository
 from models.expense import Expense
@@ -55,7 +62,25 @@ class MainWindow(QMainWindow):
         form_layout.addRow("Category:", self.category_input)
 
         # button
-        self.submit_button = QPushButton("Add Expense")    
+        self.submit_button = QPushButton("Add Expense")   
+        self.submit_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #2d89ef;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1b5fbd;
+            }
+            QPushButton:pressed {
+                background-color: #164a94;
+            }
+            """
+        ) 
 
         # expense table
         self.table = QTableWidget()
@@ -64,6 +89,16 @@ class MainWindow(QMainWindow):
             'Date', 'Amount', 'Comment', 'Category'
         ])
         self.table.setSortingEnabled(True)
+        self.table.setAlternatingRowColors(True)
+        self.table.setStyleSheet(
+            """
+            QTableWidget {
+            background-color: white;
+            alternate-background-color: #f0f0f0;
+            }
+            """
+        )
+
         self.load_expenses_from_csv()
 
         # add form, button and table to main layout
@@ -77,6 +112,14 @@ class MainWindow(QMainWindow):
 
 
     def on_submit_button_push(self):
+        
+        is_valid, error_message = self.validate_inputs()
+
+        if not is_valid:             
+            self.show_error(error_message)
+            return
+
+
         # extract data
         date = self.date_input.date().toString("yyyy-MM-dd")
         amount = self.amount_input.text()
@@ -89,17 +132,62 @@ class MainWindow(QMainWindow):
             comment = comment, 
             category=category
         )
-
+        
         # add to csv, table
         self.expense_repo.add(expense)
         self.add_expense_to_ui_table(expense)
 
-        # sort the new table data 
-        self.sort_table_by_date()   
+        # sort 
+        self.sort_table_by_date()
+
         self.clear_form()
+    
+    
+
+    def validate_inputs(self):
+
+        amount_text = self.amount_input.text().strip()
+        comment_text = self.comment_input.text().strip()
+        selected_date = self.date_input.date().toPyDate()
+
+        # date cannot be in the future
+        today = date.today()
+        if selected_date > today:
+            return False, "Date cannot be in the future."
+
+        # amount must be numeric
+        try:
+            amount_value = float(amount_text)
+        except ValueError:
+            return False, "Amount must be a number."
+
+        # amount must be positive
+        if amount_value <= 0:
+            return False, "Amount must be greater than zero."
+
+        # comment must not be empty
+        if not comment_text:
+            return False, "Comment cannot be empty."
+
+        return True, ""
+
+
+    def show_error(self, message: str):
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Invalid Input")
+        box.setText(message)
+        box.exec()
+        
+
+
+
+
             
         
     def add_expense_to_ui_table(self, expense: Expense):
+        self.table.setSortingEnabled(False)
+        
         this_row = self.table.rowCount()
         self.table.insertRow(this_row)
 
@@ -107,6 +195,7 @@ class MainWindow(QMainWindow):
         self.table.setItem(this_row, 1, QTableWidgetItem(str(expense.amount)))
         self.table.setItem(this_row, 2, QTableWidgetItem(expense.comment))
         self.table.setItem(this_row, 3, QTableWidgetItem(expense.category))
+        self.table.setSortingEnabled(True)
 
 
     def sort_table_by_date(self):
