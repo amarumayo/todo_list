@@ -1,22 +1,5 @@
-Date,Amount,Comment,Category
-2026-06-25,5,test,Transportation
-2026-06-17,5,test,Supplies
-2026-06-25,5,test,Transportation
-2026-06-25,5,sdf,Supplies
-2026-06-25,5.54,test,Transportation
-2026-06-25,4,wer,Transportation
-2026-06-25,45,f,Transportation
-2026-06-25,5,test,Transportation
-2026-06-10,5,sdf,Transportation
-2026-06-25,4.23,tet,Transportation
-2026-06-25,345,t,Transportation
-2026-06-25,345346,3,Transportation
-2026-06-25,345346,3,Transportation
-2026-06-25,34,"""hi",Transportation
-2026-06-25,34,"""hi",Transportation
-2026-06-25,345,sdf,Transportation
-2026-06-25,345,sdf,Transportation
-2026-06-25,3,3,Transportation
-2026-06-25,234.0,sdf,Transportation
-2026-06-25,345.0,sdf,Transportation
-2026-06-25,123456.0,sadf,Transportation
+Date,Amount,Comment,Category,Timestamp
+2026-06-29,5.0,a comment,Transportation,2026-06-29T18:42:31
+2026-06-29,4.0,z comment,Transportation,2026-06-29T18:42:38
+2026-06-29,3.0,test,Transportation,2026-06-29T18:45:24
+2026-06-29,2.0,sdf,Transportation,2026-06-29T18:46:11

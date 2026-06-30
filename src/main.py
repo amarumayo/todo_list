@@ -22,6 +22,8 @@ from PyQt6.QtWidgets import (
 )
 from data.expense_repository import ExpenseRepository
 from models.expense import Expense
+from datetime import datetime
+from src.enums import ExpenseColumns
 
 
 
@@ -84,10 +86,13 @@ class MainWindow(QMainWindow):
 
         # expense table
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
+        self.table.setColumnCount(len(ExpenseColumns))
         self.table.setHorizontalHeaderLabels([
-            'Date', 'Amount', 'Comment', 'Category'
+            'Date', 'Amount', 'Comment', 'Category', 'Timestamp'
         ])
+        # hide the timestamp column - its used only for internal sorting
+        self.table.setColumnHidden(ExpenseColumns.TIMESTAMP, True)
+
         self.table.setSortingEnabled(True)
         self.table.setAlternatingRowColors(True)
         self.table.setStyleSheet(
@@ -125,12 +130,14 @@ class MainWindow(QMainWindow):
         amount = self.amount_input.text()
         comment = self.comment_input.text()
         category = self.category_input.currentText()
+        timestamp = datetime.now().isoformat(timespec="seconds")
 
         expense = Expense(
-            date = date, 
-            amount = float(amount), 
-            comment = comment, 
-            category=category
+            date=date, 
+            amount=float(amount), 
+            comment=comment, 
+            category=category,
+            timestamp=timestamp
         )
         
         # add to csv, table
@@ -179,10 +186,6 @@ class MainWindow(QMainWindow):
         box.setText(message)
         box.exec()
         
-
-
-
-
             
         
     def add_expense_to_ui_table(self, expense: Expense):
@@ -191,15 +194,27 @@ class MainWindow(QMainWindow):
         this_row = self.table.rowCount()
         self.table.insertRow(this_row)
 
-        self.table.setItem(this_row, 0, QTableWidgetItem(expense.date))
-        self.table.setItem(this_row, 1, QTableWidgetItem(str(expense.amount)))
-        self.table.setItem(this_row, 2, QTableWidgetItem(expense.comment))
-        self.table.setItem(this_row, 3, QTableWidgetItem(expense.category))
+        self.table.setItem(
+            this_row, ExpenseColumns.DATE, QTableWidgetItem(expense.date)
+        )
+        self.table.setItem(
+            this_row, ExpenseColumns.AMOUNT, QTableWidgetItem(f"${expense.amount:,.2f}")
+        )
+        self.table.setItem(
+            this_row, ExpenseColumns.COMMENT, QTableWidgetItem(expense.comment)
+        )
+        self.table.setItem(
+            this_row, ExpenseColumns.CATEGORY, QTableWidgetItem(expense.category)
+        )
+        self.table.setItem(
+            this_row, ExpenseColumns.TIMESTAMP, QTableWidgetItem(expense.timestamp)
+        )
+
         self.table.setSortingEnabled(True)
 
-
     def sort_table_by_date(self):
-        self.table.sortItems(0, order=Qt.SortOrder.DescendingOrder)
+        self.table.sortItems(
+            ExpenseColumns.TIMESTAMP, order=Qt.SortOrder.DescendingOrder)
 
 
     def clear_form(self):
