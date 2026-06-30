@@ -20,13 +20,14 @@ class ExpenseRepository:
             writer = csv.writer(f)
 
             if not file_exists:
-                writer.writerow(["Date", "Amount", "Comment", "Category"])
+                writer.writerow(["Date", "Amount", "Comment", "Category", "Timestamp"])
 
             writer.writerow([
                 expense.date, 
                 expense.amount, 
                 expense.comment, 
-                expense.category
+                expense.category, 
+                expense.timestamp
             ])
 
     def load_all(self):
@@ -44,7 +45,8 @@ class ExpenseRepository:
                     date = row["Date"],
                     amount = float(row["Amount"]),
                     comment = row["Comment"],
-                    category=row["Category"]
+                    category=row["Category"], 
+                    timestamp = row["Timestamp"]
                 )
                 expenses.append(expense)
         return expenses
