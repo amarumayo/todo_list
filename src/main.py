@@ -1,183 +1,180 @@
 import sys
-from datetime import date
-from PyQt6.QtCore import (
-    QDate, 
-    Qt, 
-    QTimer
-)
-from PyQt6.QtGui import QColor
+from datetime import date, datetime
+
+from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtWidgets import (
-    QApplication, 
-    QMainWindow, 
-    QWidget, 
-    QVBoxLayout, 
-    QFormLayout, 
-    QLineEdit, 
-    QPushButton, 
-    QComboBox,
-    QDateEdit,
-    QTableWidget, 
+    QApplication,
+    QMainWindow,
     QTableWidgetItem,
-    QMessageBox
+    QMessageBox,
 )
+
 from data.expense_repository import ExpenseRepository
 from models.expense import Expense
-from datetime import datetime
 from src.enums import ExpenseColumns
-
-
+from src.connections import connect_signals
+from src.ui_setup import ExpenseUI
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-
+        
+        self.editing_row = -1
         self.expense_repo = ExpenseRepository()
-
+        
         self.setWindowTitle("test")
         self.setMinimumSize(500, 300)
 
-        # central widget and main layout
-        central = QWidget(self)
-        main_layout = QVBoxLayout(central)
+        # build ui
+        self.ui = ExpenseUI(self)
 
-        # form layout for inputs
-        form_layout = QFormLayout()
+        # load CSV
+        self.load_expenses_from_csv()        
 
-        # inputs
-        self.date_input = QDateEdit()
-        self.date_input.setCalendarPopup(True)
-        self.date_input.setDate(QDate.currentDate())
-        form_layout.addRow("Date:", self.date_input)
+        connect_signals(self)
 
-        self.amount_input = QLineEdit()
-        form_layout.addRow("Amount:", self.amount_input)
+        
+    # ---------------------------------------------------------
+    # LOAD ROW INTO FORM
+    # ---------------------------------------------------------
+    def on_row_select(self):
+        selected = self.table.currentRow()
+        if selected < 0:
+            return
 
-        self.comment_input = QLineEdit()
-        form_layout.addRow("Comment:", self.comment_input)
+        self.editing_row = selected
 
-        self.category_input = QComboBox()
-        self.category_input.addItems([
-            'Transportation',
-            'Supplies',
-            'Labor',
-        ])
-        form_layout.addRow("Category:", self.category_input)
+        # load date
+        date_str = self.table.item(selected, ExpenseColumns.DATE).text()
+        self.date_input.setDate(QDate.fromString(date_str, "yyyy-MM-dd"))
 
-        # button
-        self.submit_button = QPushButton("Add Expense")   
-        self.submit_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2d89ef;
-                color: white;
-                padding: 8px 16px;
-                border-radius: 6px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1b5fbd;
-            }
-            QPushButton:pressed {
-                background-color: #164a94;
-            }
-            """
-        ) 
+        # load amount
+        amount_str = self.table.item(selected, ExpenseColumns.AMOUNT).text()
+        clean_amount = amount_str.replace("$", "").replace(",", "")
+        self.amount_input.setText(clean_amount)
 
-        # expense table
-        self.table = QTableWidget()
-        self.table.setColumnCount(len(ExpenseColumns))
-        self.table.setHorizontalHeaderLabels([
-            'Date', 'Amount', 'Comment', 'Category', 'Timestamp'
-        ])
-        # hide the timestamp column - its used only for internal sorting
-        self.table.setColumnHidden(ExpenseColumns.TIMESTAMP, True)
-
-        self.table.setSortingEnabled(True)
-        self.table.setAlternatingRowColors(True)
-        self.table.setStyleSheet(
-            """
-            QTableWidget {
-            background-color: white;
-            alternate-background-color: #f0f0f0;
-            }
-            """
+        # load comment
+        self.comment_input.setText(
+            self.table.item(selected, ExpenseColumns.COMMENT).text()
         )
 
-        self.load_expenses_from_csv()
+        # load category
+        self.category_input.setCurrentText(
+            self.table.item(selected, ExpenseColumns.CATEGORY).text()
+        )
 
-        # add form, button and table to main layout
-        main_layout.addLayout(form_layout)
-        main_layout.addWidget(self.submit_button)
-        main_layout.addWidget(self.table)
-        self.setCentralWidget(central)
+        self.submit_button.setText("Save Changes")
 
-        # connect events
-        self.submit_button.clicked.connect(self.on_submit_button_push)
+    # ---------------------------------------------------------
+    # SAVE CHANGES (FORM → TABLE → CSV)
+    # ---------------------------------------------------------
+    def save_changes_to_expense(self):
+        row = self.editing_row
+        if row < 0:
+            return
 
-
-    def on_submit_button_push(self):
-        
+        # validate form
         is_valid, error_message = self.validate_inputs()
-
-        if not is_valid:             
+        if not is_valid:
             self.show_error(error_message)
             return
 
+        # read form values
+        date_str = self.date_input.date().toString("yyyy-MM-dd")
+        amount_value = float(self.amount_input.text())
+        comment = self.comment_input.text()
+        category = self.category_input.currentText()
 
-        # extract data
-        date = self.date_input.date().toString("yyyy-MM-dd")
-        amount = self.amount_input.text()
+        # timestamp identifies the row
+        timestamp = self.table.item(row, ExpenseColumns.TIMESTAMP).text()
+
+        updated = Expense(date_str, amount_value, comment, category, timestamp)
+
+        # prevent selection reload during save
+        self.table.blockSignals(True)
+        self.table.setSortingEnabled(False)
+
+        # update table row
+        self.table.setItem(row, ExpenseColumns.DATE, QTableWidgetItem(date_str))
+        self.table.setItem(
+            row,
+            ExpenseColumns.AMOUNT,
+            QTableWidgetItem(f"${amount_value:,.2f}")
+        )
+        self.table.setItem(row, ExpenseColumns.COMMENT, QTableWidgetItem(comment))
+        self.table.setItem(row, ExpenseColumns.CATEGORY, QTableWidgetItem(category))
+
+        # update CSV
+        self.expense_repo.update(updated)
+
+        # re-enable sorting
+        self.table.setSortingEnabled(True)
+        self.sort_table_by_date()
+
+        self.table.blockSignals(False)
+
+        # reset form
+        self.submit_button.setText("Add Expense")
+        self.editing_row = -1
+        self.clear_form()
+
+    # ---------------------------------------------------------
+    # ADD NEW EXPENSE
+    # ---------------------------------------------------------
+    def on_submit_button_push(self):
+        if self.submit_button.text() == "Add Expense":
+            self.add_new_expense()
+        else:
+            self.save_changes_to_expense()
+
+    def add_new_expense(self):
+        is_valid, error_message = self.validate_inputs()
+        if not is_valid:
+            self.show_error(error_message)
+            return
+
+        date_str = self.date_input.date().toString("yyyy-MM-dd")
+        amount_value = float(self.amount_input.text())
         comment = self.comment_input.text()
         category = self.category_input.currentText()
         timestamp = datetime.now().isoformat(timespec="seconds")
 
-        expense = Expense(
-            date=date, 
-            amount=float(amount), 
-            comment=comment, 
-            category=category,
-            timestamp=timestamp
-        )
-        
-        # add to csv, table
+        expense = Expense(date_str, amount_value, comment, category, timestamp)
+
         self.expense_repo.add(expense)
         self.add_expense_to_ui_table(expense)
-
-        # sort 
         self.sort_table_by_date()
-
         self.clear_form()
-    
-    
 
+    # ---------------------------------------------------------
+    # DELETE EXPENSE
+    # ---------------------------------------------------------
+    def on_delete_button_push(self):
+        print("delete button pushed")
+        
+    # ---------------------------------------------------------
+    # VALIDATION
+    # ---------------------------------------------------------
     def validate_inputs(self):
-
         amount_text = self.amount_input.text().strip()
         comment_text = self.comment_input.text().strip()
         selected_date = self.date_input.date().toPyDate()
 
-        # date cannot be in the future
-        today = date.today()
-        if selected_date > today:
+        if selected_date > date.today():
             return False, "Date cannot be in the future."
 
-        # amount must be numeric
         try:
             amount_value = float(amount_text)
         except ValueError:
             return False, "Amount must be a number."
 
-        # amount must be positive
         if amount_value <= 0:
             return False, "Amount must be greater than zero."
 
-        # comment must not be empty
         if not comment_text:
             return False, "Comment cannot be empty."
 
         return True, ""
-
 
     def show_error(self, message: str):
         box = QMessageBox(self)
@@ -185,37 +182,30 @@ class MainWindow(QMainWindow):
         box.setWindowTitle("Invalid Input")
         box.setText(message)
         box.exec()
-        
-            
-        
+
+    # ---------------------------------------------------------
+    # TABLE HELPERS
+    # ---------------------------------------------------------
     def add_expense_to_ui_table(self, expense: Expense):
         self.table.setSortingEnabled(False)
-        
-        this_row = self.table.rowCount()
-        self.table.insertRow(this_row)
 
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+
+        self.table.setItem(row, ExpenseColumns.DATE, QTableWidgetItem(expense.date))
         self.table.setItem(
-            this_row, ExpenseColumns.DATE, QTableWidgetItem(expense.date)
+            row,
+            ExpenseColumns.AMOUNT,
+            QTableWidgetItem(f"${expense.amount:,.2f}")
         )
-        self.table.setItem(
-            this_row, ExpenseColumns.AMOUNT, QTableWidgetItem(f"${expense.amount:,.2f}")
-        )
-        self.table.setItem(
-            this_row, ExpenseColumns.COMMENT, QTableWidgetItem(expense.comment)
-        )
-        self.table.setItem(
-            this_row, ExpenseColumns.CATEGORY, QTableWidgetItem(expense.category)
-        )
-        self.table.setItem(
-            this_row, ExpenseColumns.TIMESTAMP, QTableWidgetItem(expense.timestamp)
-        )
+        self.table.setItem(row, ExpenseColumns.COMMENT, QTableWidgetItem(expense.comment))
+        self.table.setItem(row, ExpenseColumns.CATEGORY, QTableWidgetItem(expense.category))
+        self.table.setItem(row, ExpenseColumns.TIMESTAMP, QTableWidgetItem(expense.timestamp))
 
         self.table.setSortingEnabled(True)
 
     def sort_table_by_date(self):
-        self.table.sortItems(
-            ExpenseColumns.TIMESTAMP, order=Qt.SortOrder.DescendingOrder)
-
+        self.table.sortItems(ExpenseColumns.TIMESTAMP, Qt.SortOrder.DescendingOrder)
 
     def clear_form(self):
         self.date_input.setDate(QDate.currentDate())
@@ -223,14 +213,13 @@ class MainWindow(QMainWindow):
         self.comment_input.clear()
         self.category_input.setCurrentIndex(0)
 
-
+    # ---------------------------------------------------------
+    # LOAD CSV
+    # ---------------------------------------------------------
     def load_expenses_from_csv(self):
-
         rows = self.expense_repo.load_all()
-
         for expense in rows:
             self.add_expense_to_ui_table(expense)
-        
         self.sort_table_by_date()
 
 
@@ -239,6 +228,7 @@ def main():
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()
