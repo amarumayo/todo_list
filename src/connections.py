@@ -1,5 +1,5 @@
-def connect_signals(window):
+def connect_signals(parent):
     # events
-    window.submit_button.clicked.connect(window.on_submit_button_push)
-    window.delete_button.clicked.connect(window.on_delete_button_push)
-    window.table.itemSelectionChanged.connect(window.on_row_select)
+    parent.ui.submit_button.clicked.connect(parent.on_submit_button_push)
+    parent.ui.delete_button.clicked.connect(parent.on_delete_button_push)
+    parent.ui.table.itemSelectionChanged.connect(parent.on_row_select)
