@@ -7,3 +7,6 @@ class Expense:
     comment: str    # "a comment"
     category: str   # "Transportation"
     timestamp: str   # "2026-06-25T14:32:10
+    entry_mode: str = "Amount"
+    mileage: float | None = None
+    rate: float | None = None

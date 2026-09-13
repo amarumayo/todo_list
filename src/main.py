@@ -18,22 +18,24 @@ from src.ui_setup import ExpenseUI
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        
+
         self.editing_row = -1
         self.expense_repo = ExpenseRepository()
-        
+        self.expenses: dict[str, Expense] = {}
+
         self.setWindowTitle("test")
         self.setMinimumSize(500, 300)
 
         # build ui
         self.ui = ExpenseUI(self)
+        self.ui.entry_mode_input.currentTextChanged.connect(self.toggle_entry_mode)
 
         # load CSV
-        self.load_expenses_from_csv()        
+        self.load_expenses_from_csv()
 
         connect_signals(self)
 
-        
+
     # ---------------------------------------------------------
     # LOAD ROW INTO FORM
     # ---------------------------------------------------------
@@ -44,25 +46,28 @@ class MainWindow(QMainWindow):
             return
 
         self.editing_row = selected
+        timestamp = self.ui.table.item(selected, ExpenseColumns.TIMESTAMP).text()
+        expense = self.expenses.get(timestamp)
+        if expense is None:
+            return
 
         # load date
-        date_str = self.ui.table.item(selected, ExpenseColumns.DATE).text()
-        self.ui.date_input.setDate(QDate.fromString(date_str, "yyyy-MM-dd"))
-
-        # load amount
-        amount_str = self.ui.table.item(selected, ExpenseColumns.AMOUNT).text()
-        clean_amount = amount_str.replace("$", "").replace(",", "")
-        self.ui.amount_input.setText(clean_amount)
+        self.ui.date_input.setDate(QDate.fromString(expense.date, "yyyy-MM-dd"))
 
         # load comment
-        self.ui.comment_input.setText(
-            self.ui.table.item(selected, ExpenseColumns.COMMENT).text()
-        )
+        self.ui.comment_input.setText(expense.comment)
 
         # load category
-        self.ui.category_input.setCurrentText(
-            self.ui.table.item(selected, ExpenseColumns.CATEGORY).text()
-        )
+        self.ui.category_input.setCurrentText(expense.category)
+
+        # setting this triggers toggle_entry_mode, which shows the right fields
+        self.ui.entry_mode_input.setCurrentText(expense.entry_mode)
+
+        if expense.entry_mode == "Miles":
+            self.ui.mileage_input.setText(str(expense.mileage))
+            self.ui.rate_input.setText(str(expense.rate))
+        else:
+            self.ui.amount_input.setText(f"{expense.amount:g}")
 
         self.ui.submit_button.setText("Save Changes")
 
@@ -80,33 +85,28 @@ class MainWindow(QMainWindow):
             self.show_error(error_message)
             return
 
-        # read form values
-        date_str = self.ui.date_input.date().toString("yyyy-MM-dd")
-        amount_value = float(self.ui.amount_input.text())
-        comment = self.ui.comment_input.text()
-        category = self.ui.category_input.currentText()
-
         # timestamp identifies the row
         timestamp = self.ui.table.item(row, ExpenseColumns.TIMESTAMP).text()
 
-        updated = Expense(date_str, amount_value, comment, category, timestamp)
+        updated = self.build_expense_from_form(timestamp)
 
         # prevent selection reload during save
         self.ui.table.blockSignals(True)
         self.ui.table.setSortingEnabled(False)
 
         # update table row
-        self.ui.table.setItem(row, ExpenseColumns.DATE, QTableWidgetItem(date_str))
+        self.ui.table.setItem(row, ExpenseColumns.DATE, QTableWidgetItem(updated.date))
         self.ui.table.setItem(
             row,
             ExpenseColumns.AMOUNT,
-            QTableWidgetItem(f"${amount_value:,.2f}")
+            QTableWidgetItem(f"${updated.amount:,.2f}")
         )
-        self.ui.table.setItem(row, ExpenseColumns.COMMENT, QTableWidgetItem(comment))
-        self.ui.table.setItem(row, ExpenseColumns.CATEGORY, QTableWidgetItem(category))
+        self.ui.table.setItem(row, ExpenseColumns.COMMENT, QTableWidgetItem(updated.comment))
+        self.ui.table.setItem(row, ExpenseColumns.CATEGORY, QTableWidgetItem(updated.category))
 
         # update CSV
         self.expense_repo.update(updated)
+        self.expenses[timestamp] = updated
 
         # re-enable sorting
         self.ui.table.setSortingEnabled(True)
@@ -134,18 +134,36 @@ class MainWindow(QMainWindow):
             self.show_error(error_message)
             return
 
-        date_str = self.ui.date_input.date().toString("yyyy-MM-dd")
-        amount_value = float(self.ui.amount_input.text())
-        comment = self.ui.comment_input.text()
-        category = self.ui.category_input.currentText()
         timestamp = datetime.now().isoformat(timespec="seconds")
-
-        expense = Expense(date_str, amount_value, comment, category, timestamp)
+        expense = self.build_expense_from_form(timestamp)
 
         self.expense_repo.add(expense)
+        self.expenses[timestamp] = expense
         self.add_expense_to_ui_table(expense)
         self.sort_table_by_date()
         self.clear_form()
+
+    def build_expense_from_form(self, timestamp: str) -> Expense:
+        """Reads the form and produces an Expense, handling both modes."""
+        date_str = self.ui.date_input.date().toString("yyyy-MM-dd")
+        comment = self.ui.comment_input.text()
+        category = self.ui.category_input.currentText()
+        mode = self.ui.entry_mode_input.currentText()
+
+        if mode == "Miles":
+            mileage = float(self.ui.mileage_input.text())
+            rate = float(self.ui.rate_input.text())
+            amount_value = round(mileage * rate, 2)
+            return Expense(
+                date_str, amount_value, comment, category, timestamp,
+                entry_mode="Miles", mileage=mileage, rate=rate
+            )
+        else:
+            amount_value = float(self.ui.amount_input.text())
+            return Expense(
+                date_str, amount_value, comment, category, timestamp,
+                entry_mode="Amount", mileage=None, rate=None
+            )
 
     # ---------------------------------------------------------
     # DELETE EXPENSE
@@ -154,11 +172,12 @@ class MainWindow(QMainWindow):
         row = self.ui.table.currentRow()
         if row < 0:
             return
-        
+
         timestamp = self.ui.table.item(row, ExpenseColumns.TIMESTAMP).text()
-        
+
         # delete from csv
         self.expense_repo.delete_by_timestamp(timestamp)
+        self.expenses.pop(timestamp, None)
         # remove from table
         self.ui.table.removeRow(row)
 
@@ -166,28 +185,54 @@ class MainWindow(QMainWindow):
         self.clear_form()
         self.ui.submit_button.setText("Add Expense")
         self.editing_row = -1
-        
+
+    def toggle_entry_mode(self):
+        is_miles = self.ui.entry_mode_input.currentText() == "Miles"
+        form = self.ui.form_layout
+
+        self.ui.amount_input.setVisible(not is_miles)
+        form.labelForField(self.ui.amount_input).setVisible(not is_miles)
+
+        self.ui.mileage_row.setVisible(is_miles)
+        form.labelForField(self.ui.mileage_row).setVisible(is_miles)
+
+        self.ui.rate_row.setVisible(is_miles)
+        form.labelForField(self.ui.rate_row).setVisible(is_miles)
+
     # ---------------------------------------------------------
     # VALIDATION
     # ---------------------------------------------------------
     def validate_inputs(self):
-        amount_text = self.ui.amount_input.text().strip()
         comment_text = self.ui.comment_input.text().strip()
         selected_date = self.ui.date_input.date().toPyDate()
+        mode = self.ui.entry_mode_input.currentText()
 
         if selected_date > date.today():
             return False, "Date cannot be in the future."
 
-        try:
-            amount_value = float(amount_text)
-        except ValueError:
-            return False, "Amount must be a number."
-
-        if amount_value <= 0:
-            return False, "Amount must be greater than zero."
-
         if not comment_text:
             return False, "Comment cannot be empty."
+
+        if mode == "Miles":
+            try:
+                mileage = float(self.ui.mileage_input.text())
+                rate = float(self.ui.rate_input.text())
+            except ValueError:
+                return False, "Mileage and rate must be numbers."
+
+            if mileage <= 0:
+                return False, "Mileage must be greater than zero."
+
+            if rate <= 0:
+                return False, "Rate must be greater than zero."
+        else:
+            try:
+                amount_value = float(self.ui.amount_input.text())
+            except ValueError:
+                return False, "Amount must be a number."
+
+            if amount_value <= 0:
+                return False, "Amount must be greater than zero."
 
         return True, ""
 
@@ -235,6 +280,7 @@ class MainWindow(QMainWindow):
     def load_expenses_from_csv(self):
         rows = self.expense_repo.load_all()
         for expense in rows:
+            self.expenses[expense.timestamp] = expense
             self.add_expense_to_ui_table(expense)
         self.sort_table_by_date()
 

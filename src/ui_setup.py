@@ -1,12 +1,14 @@
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
+    QHBoxLayout,
     QFormLayout,
     QLineEdit,
     QPushButton,
     QComboBox,
     QDateEdit,
     QTableWidget,
+    QLabel
 )
 from PyQt6.QtCore import QDate, Qt
 from src.enums import ExpenseColumns
@@ -57,12 +59,29 @@ class ExpenseUI:
         self.category_input.addItems(["Supplies", "Labor"])
         form.addRow("Category:", self.category_input)
 
-        self.mileage_input = QLineEdit() 
-        form.addRow("Mileage:", self.mileage_input)
-
-        self.rate_input = QLineEdit() 
+        # Mileage row container
+        self.mileage_input = QLineEdit()
+        self.mileage_row = QWidget()
+        mileage_layout = QHBoxLayout(self.mileage_row)
+        mileage_layout.setContentsMargins(0, 0, 0, 0)
+        mileage_layout.addWidget(self.mileage_input)
+        form.addRow("Mileage:", self.mileage_row)
+        mileage_label = form.labelForField(self.mileage_row)
+        mileage_label.hide()
+        self.mileage_row.hide()
+        
+        # Rate row container
+        self.rate_input = QLineEdit()
         self.rate_input.setText("0.67")
-        form.addRow("Rate:", self.rate_input)
+        self.rate_row = QWidget()
+        rate_layout = QHBoxLayout(self.rate_row)
+        rate_layout.setContentsMargins(0, 0, 0, 0)
+        rate_layout.addWidget(self.rate_input)
+        form.addRow("Rate:", self.rate_row)
+        rate_label = form.labelForField(self.rate_row)
+        rate_label.hide()
+        self.rate_row.hide()
+
 
         return form
 

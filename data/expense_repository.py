@@ -1,8 +1,16 @@
 import csv
 from pathlib import Path
+from typing import ClassVar
+
 from models.expense import Expense
 
+
 class ExpenseRepository:
+
+    FIELDNAMES: ClassVar[list[str]] = [
+        "Date", "Amount", "Comment", "Category", "Timestamp", "EntryMode", "Mileage", "Rate"
+    ]
+
     def __init__(self, path: str = "PaloVerdeRentalExpense.csv") -> None:
         project_root = Path(__file__).resolve().parent.parent
         self.path = project_root / "data" / path
@@ -21,7 +29,10 @@ class ExpenseRepository:
                         amount=float(row["Amount"]),
                         comment=row["Comment"],
                         category=row["Category"],
-                        timestamp=row["Timestamp"]
+                        timestamp=row["Timestamp"], 
+                        entry_mode = row["EntryMode"], 
+                        mileage = float(row["Mileage"]) if row["Mileage"] else None,
+                        rate = float(row["Rate"]) if row["Rate"] else None,
                     )
                 )
         return expenses
@@ -29,15 +40,10 @@ class ExpenseRepository:
     def save_all(self, expenses):
         with self.path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["Date", "Amount", "Comment", "Category", "Timestamp"])
+            writer.writerow(self.FIELDNAMES)
             for exp in expenses:
-                writer.writerow([
-                    exp.date,
-                    exp.amount,
-                    exp.comment,
-                    exp.category,
-                    exp.timestamp
-                ])
+                writer.writerow(self._row(exp))
+                    
 
     def add(self, expense: Expense):
         file_exists = self.path.exists()
@@ -46,15 +52,18 @@ class ExpenseRepository:
             writer = csv.writer(f)
 
             if not file_exists:
-                writer.writerow(["Date", "Amount", "Comment", "Category", "Timestamp"])
+                writer.writerow(self.FIELDNAMES)
+            writer.writerow(self._row(expense))
 
-            writer.writerow([
-                expense.date,
-                expense.amount,
-                expense.comment,
-                expense.category,
-                expense.timestamp
-            ])
+
+    def _row(self, exp: Expense):
+        return [
+            exp.date, exp.amount, exp.comment, exp.category, exp.timestamp,
+            exp.entry_mode,
+            exp.mileage if exp.mileage is not None else "",
+            exp.rate if exp.rate is not None else "",
+        ]
+    
 
     def update(self, updated: Expense):
         expenses = self.load_all()
