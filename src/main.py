@@ -57,11 +57,11 @@ class MainWindow(QMainWindow):
         # load comment
         self.ui.comment_input.setText(expense.comment)
 
-        # load category
-        self.ui.category_input.setCurrentText(expense.category)
-
         # setting this triggers toggle_entry_mode, which shows the right fields
         self.ui.entry_mode_input.setCurrentText(expense.entry_mode)
+
+        # load category (after entry_mode, so it overrides the auto-default from toggle)
+        self.ui.category_input.setCurrentText(expense.category)
 
         if expense.entry_mode == "Miles":
             self.ui.mileage_input.setText(str(expense.mileage))
@@ -198,6 +198,15 @@ class MainWindow(QMainWindow):
 
         self.ui.rate_row.setVisible(is_miles)
         form.labelForField(self.ui.rate_row).setVisible(is_miles)
+
+        if is_miles:
+            self.ui.category_input.setCurrentText("Transportation")
+        else:
+            self.ui.category_input.setCurrentText("Supplies")
+
+        # don't allow selection during mileage mode
+        self.ui.category_input.setEnabled(not is_miles)
+
 
     # ---------------------------------------------------------
     # VALIDATION

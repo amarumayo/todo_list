@@ -52,11 +52,8 @@ class ExpenseUI:
         self.amount_input = QLineEdit()            
         form.addRow("Amount:", self.amount_input)
         
-        self.comment_input = QLineEdit()
-        form.addRow("Comment:", self.comment_input)
-
         self.category_input = QComboBox()
-        self.category_input.addItems(["Supplies", "Labor"])
+        self.category_input.addItems(["Supplies", "Labor", "Transportation"])
         form.addRow("Category:", self.category_input)
 
         # Mileage row container
@@ -82,6 +79,9 @@ class ExpenseUI:
         rate_label.hide()
         self.rate_row.hide()
 
+        # I want comments to be last
+        self.comment_input = QLineEdit()
+        form.addRow("Comment:", self.comment_input)
 
         return form
 
