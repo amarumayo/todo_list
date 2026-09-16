@@ -5,4 +5,4 @@ class ExpenseColumns(IntEnum):
     AMOUNT = 1
     COMMENT = 2
     CATEGORY = 3
-    TIMESTAMP = 4
+    ID = 4

@@ -2,11 +2,12 @@ from dataclasses import dataclass
 
 @dataclass
 class Expense:
-    date: str       # "2026-06-25"
-    amount: float   # 5.00
-    comment: str    # "a comment"
-    category: str   # "Transportation"
-    timestamp: str   # "2026-06-25T14:32:10
+    date: str               # "2026-06-25"
+    amount: float           # 5.00
+    comment: str            # "a comment"
+    category: str           # "Transportation"
+    timestamp: str          # "2026-06-25T14:32:10
+    id: int | None = None   # database row identity; None until saved
     entry_mode: str = "Amount"
     mileage: float | None = None
     rate: float | None = None
