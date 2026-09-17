@@ -10,18 +10,24 @@ from PyQt6.QtWidgets import (
 )
 
 from data.expense_repository import ExpenseRepository
+from data.expense_repository_db import ExpenseRepositoryDB
 from models.expense import Expense
 from src.enums import ExpenseColumns
 from src.connections import connect_signals
 from src.ui_setup import ExpenseUI
+
+# Toggle which storage backend the app uses. Both expose the same
+# load_all/add/update/delete_by_id interface, so nothing else needs to change.
+USE_DATABASE = True
+
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
 
         self.editing_row = -1
-        self.expense_repo = ExpenseRepository()
-        self.expenses: dict[str, Expense] = {}
+        self.expense_repo = ExpenseRepositoryDB() if USE_DATABASE else ExpenseRepository()
+        self.expenses: dict[int, Expense] = {}
 
         self.setWindowTitle("test")
         self.setMinimumSize(500, 300)
@@ -30,8 +36,8 @@ class MainWindow(QMainWindow):
         self.ui = ExpenseUI(self)
         self.ui.entry_mode_input.currentTextChanged.connect(self.toggle_entry_mode)
 
-        # load CSV
-        self.load_expenses_from_csv()
+        # load from repository (db or csv, depending on USE_DATABASE)
+        self.load_expenses()
 
         connect_signals(self)
 
@@ -46,8 +52,8 @@ class MainWindow(QMainWindow):
             return
 
         self.editing_row = selected
-        timestamp = self.ui.table.item(selected, ExpenseColumns.TIMESTAMP).text()
-        expense = self.expenses.get(timestamp)
+        expense_id = int(self.ui.table.item(selected, ExpenseColumns.ID).text())
+        expense = self.expenses.get(expense_id)
         if expense is None:
             return
 
@@ -58,9 +64,11 @@ class MainWindow(QMainWindow):
         self.ui.comment_input.setText(expense.comment)
 
         # setting this triggers toggle_entry_mode, which shows the right fields
+        # (and, for Miles, forces category to Transportation)
         self.ui.entry_mode_input.setCurrentText(expense.entry_mode)
 
-        # load category (after entry_mode, so it overrides the auto-default from toggle)
+        # load category AFTER entry_mode, so the saved value overrides the
+        # auto-default toggle_entry_mode just applied
         self.ui.category_input.setCurrentText(expense.category)
 
         if expense.entry_mode == "Miles":
@@ -72,7 +80,7 @@ class MainWindow(QMainWindow):
         self.ui.submit_button.setText("Save Changes")
 
     # ---------------------------------------------------------
-    # SAVE CHANGES (FORM → TABLE → CSV)
+    # SAVE CHANGES (FORM → TABLE → REPO)
     # ---------------------------------------------------------
     def save_changes_to_expense(self):
         row = self.editing_row
@@ -85,10 +93,14 @@ class MainWindow(QMainWindow):
             self.show_error(error_message)
             return
 
-        # timestamp identifies the row
-        timestamp = self.ui.table.item(row, ExpenseColumns.TIMESTAMP).text()
+        # id identifies the row
+        expense_id = int(self.ui.table.item(row, ExpenseColumns.ID).text())
 
-        updated = self.build_expense_from_form(timestamp)
+        # created_at should never change on edit — reuse the original value
+        existing = self.expenses.get(expense_id)
+        created_at = existing.timestamp if existing else datetime.now().isoformat(timespec="seconds")
+
+        updated = self.build_expense_from_form(expense_id=expense_id, created_at=created_at)
 
         # prevent selection reload during save
         self.ui.table.blockSignals(True)
@@ -104,13 +116,13 @@ class MainWindow(QMainWindow):
         self.ui.table.setItem(row, ExpenseColumns.COMMENT, QTableWidgetItem(updated.comment))
         self.ui.table.setItem(row, ExpenseColumns.CATEGORY, QTableWidgetItem(updated.category))
 
-        # update CSV
+        # update repository
         self.expense_repo.update(updated)
-        self.expenses[timestamp] = updated
+        self.expenses[expense_id] = updated
 
         # re-enable sorting
         self.ui.table.setSortingEnabled(True)
-        self.sort_table_by_date()
+        self.sort_table_by_id()
 
         self.ui.table.blockSignals(False)
 
@@ -134,16 +146,19 @@ class MainWindow(QMainWindow):
             self.show_error(error_message)
             return
 
-        timestamp = datetime.now().isoformat(timespec="seconds")
-        expense = self.build_expense_from_form(timestamp)
+        created_at = datetime.now().isoformat(timespec="seconds")
+        expense = self.build_expense_from_form(expense_id=None, created_at=created_at)
 
-        self.expense_repo.add(expense)
-        self.expenses[timestamp] = expense
+        # repo assigns the id on insert — we don't know it beforehand
+        new_id = self.expense_repo.add(expense)
+        expense.id = new_id
+
+        self.expenses[new_id] = expense
         self.add_expense_to_ui_table(expense)
-        self.sort_table_by_date()
+        self.sort_table_by_id()
         self.clear_form()
 
-    def build_expense_from_form(self, timestamp: str) -> Expense:
+    def build_expense_from_form(self, expense_id: int | None, created_at: str) -> Expense:
         """Reads the form and produces an Expense, handling both modes."""
         date_str = self.ui.date_input.date().toString("yyyy-MM-dd")
         comment = self.ui.comment_input.text()
@@ -155,14 +170,14 @@ class MainWindow(QMainWindow):
             rate = float(self.ui.rate_input.text())
             amount_value = round(mileage * rate, 2)
             return Expense(
-                date_str, amount_value, comment, category, timestamp,
-                entry_mode="Miles", mileage=mileage, rate=rate
+                date_str, amount_value, comment, category, created_at,
+                id=expense_id, entry_mode="Miles", mileage=mileage, rate=rate
             )
         else:
             amount_value = float(self.ui.amount_input.text())
             return Expense(
-                date_str, amount_value, comment, category, timestamp,
-                entry_mode="Amount", mileage=None, rate=None
+                date_str, amount_value, comment, category, created_at,
+                id=expense_id, entry_mode="Amount", mileage=None, rate=None
             )
 
     # ---------------------------------------------------------
@@ -173,11 +188,11 @@ class MainWindow(QMainWindow):
         if row < 0:
             return
 
-        timestamp = self.ui.table.item(row, ExpenseColumns.TIMESTAMP).text()
+        expense_id = int(self.ui.table.item(row, ExpenseColumns.ID).text())
 
-        # delete from csv
-        self.expense_repo.delete_by_timestamp(timestamp)
-        self.expenses.pop(timestamp, None)
+        # delete from repository
+        self.expense_repo.delete_by_id(expense_id)
+        self.expenses.pop(expense_id, None)
         # remove from table
         self.ui.table.removeRow(row)
 
@@ -204,9 +219,7 @@ class MainWindow(QMainWindow):
         else:
             self.ui.category_input.setCurrentText("Supplies")
 
-        # don't allow selection during mileage mode
         self.ui.category_input.setEnabled(not is_miles)
-
 
     # ---------------------------------------------------------
     # VALIDATION
@@ -269,12 +282,19 @@ class MainWindow(QMainWindow):
         )
         self.ui.table.setItem(row, ExpenseColumns.COMMENT, QTableWidgetItem(expense.comment))
         self.ui.table.setItem(row, ExpenseColumns.CATEGORY, QTableWidgetItem(expense.category))
-        self.ui.table.setItem(row, ExpenseColumns.TIMESTAMP, QTableWidgetItem(expense.timestamp))
+
+        # store the id as numeric data (not just text) so the table sorts it
+        # as a number, not alphabetically ("10" would otherwise sort before "2")
+        id_item = QTableWidgetItem()
+        id_item.setData(Qt.ItemDataRole.DisplayRole, expense.id)
+        self.ui.table.setItem(row, ExpenseColumns.ID, id_item)
 
         self.ui.table.setSortingEnabled(True)
 
-    def sort_table_by_date(self):
-        self.ui.table.sortItems(ExpenseColumns.TIMESTAMP, Qt.SortOrder.DescendingOrder)
+    def sort_table_by_id(self):
+        # ids increment as expenses are added, so sorting by id descending
+        # shows newest first
+        self.ui.table.sortItems(ExpenseColumns.ID, Qt.SortOrder.DescendingOrder)
 
     def clear_form(self):
         self.ui.date_input.setDate(QDate.currentDate())
@@ -284,14 +304,14 @@ class MainWindow(QMainWindow):
         self.ui.delete_button.setEnabled(False)
 
     # ---------------------------------------------------------
-    # LOAD CSV
+    # LOAD FROM REPOSITORY
     # ---------------------------------------------------------
-    def load_expenses_from_csv(self):
+    def load_expenses(self):
         rows = self.expense_repo.load_all()
         for expense in rows:
-            self.expenses[expense.timestamp] = expense
+            self.expenses[expense.id] = expense
             self.add_expense_to_ui_table(expense)
-        self.sort_table_by_date()
+        self.sort_table_by_id()
 
 
 def main():

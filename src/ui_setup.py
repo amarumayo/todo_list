@@ -147,11 +147,11 @@ class ExpenseUI:
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setColumnCount(len(ExpenseColumns))
         self.table.setHorizontalHeaderLabels(
-            ["Date", "Amount", "Comment", "Category", "Timestamp"]
+            ["Date", "Amount", "Comment", "Category", "ID"]
         )
 
-        # timestamp column hidden
-        self.table.setColumnHidden(ExpenseColumns.TIMESTAMP, True)
+        # ID column hidden — used internally to identify rows
+        self.table.setColumnHidden(ExpenseColumns.ID, True)
         self.table.setSortingEnabled(True)
         self.table.setAlternatingRowColors(True)
         return self.table
