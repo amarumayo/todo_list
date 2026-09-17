@@ -82,6 +82,10 @@ class ExpenseRepositoryDB:
         )
         self.conn.commit()
 
+    def delete_by_id(self, expense_id: int):
+        self.conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+        self.conn.commit()
+
 
 
 
